@@ -96,13 +96,11 @@ The function returns a list of dictionaries:
 ```json
 [
     {
-        "ndc": "00002146080",
-        "month": "2026-01",
+        "month": 1,
         "predicted_price": 523.14
     },
     {
-        "ndc": "00002146080",
-        "month": "2026-02",
+        "month": 2,
         "predicted_price": 523.88
     }
 ]
