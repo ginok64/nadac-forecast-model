@@ -5,8 +5,10 @@ import pandas as pd
 import numpy as np
 
 # ===== CONFIG =====
-MODEL_PATH = "models/lightgbm_model.pkl"
-FEATURE_META_PATH = "models/feature_metadata.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+MODEL_PATH = os.path.join(BASE_DIR, "lightgbm_model.pkl")
+FEATURE_META_PATH = os.path.join(BASE_DIR, "feature_metadata.json")
 
 
 # ===== LOAD MODEL =====
@@ -41,13 +43,25 @@ def fill_missing(history_df):
 # ===== CORE FUNCTION =====
 def forecast_ndc(ndc: str, history_df: pd.DataFrame, steps: int = 12):
     """
-    history_df 必須包含：
-    - month (datetime or string)
-    - NADAC Per Unit (float)
+    history_df must contain:
+    - month
+    - NADAC Per Unit
+
+    return format:
+    [
+        {"month": 1, "predicted_price": ...},
+        {"month": 2, "predicted_price": ...}
+    ]
     """
 
     history_df = history_df.copy()
     history_df["month"] = pd.to_datetime(history_df["month"])
+    history_df["NADAC Per Unit"] = pd.to_numeric(
+        history_df["NADAC Per Unit"],
+        errors="coerce"
+    )
+
+    history_df = history_df.dropna(subset=["month", "NADAC Per Unit"])
     history_df = history_df.sort_values("month").reset_index(drop=True)
 
     history_df = fill_missing(history_df)
@@ -70,15 +84,20 @@ def forecast_ndc(ndc: str, history_df: pd.DataFrame, steps: int = 12):
 
     results = []
 
-    for target_month in future_months:
+    for index, target_month in enumerate(future_months, start=1):
         feature_dict = {}
 
-        # lag features
         for k in LAGS:
             lag_month = target_month - pd.offsets.MonthEnd(k)
+
+            if lag_month not in known:
+                raise ValueError(
+                    f"Missing lag month {lag_month.strftime('%Y-%m')} "
+                    f"for forecast month {target_month.strftime('%Y-%m')}"
+                )
+
             feature_dict[f"lag_{k}"] = known[lag_month]
 
-        # rolling
         vals_3 = [
             known[target_month - pd.offsets.MonthEnd(k)]
             for k in range(1, 4)
@@ -93,10 +112,8 @@ def forecast_ndc(ndc: str, history_df: pd.DataFrame, steps: int = 12):
         feature_dict["roll_mean_6"] = float(np.mean(vals_6))
         feature_dict["roll_std_6"] = float(np.std(vals_6, ddof=1))
 
-        # month feature
         feature_dict["month_num"] = int(target_month.month)
 
-        # predict delta
         X_pred = pd.DataFrame([feature_dict], columns=feat_cols)
         delta = float(model.predict(X_pred)[0])
 
@@ -106,8 +123,7 @@ def forecast_ndc(ndc: str, history_df: pd.DataFrame, steps: int = 12):
         pred_price = last_price + delta
 
         results.append({
-            "ndc": ndc,
-            "month": target_month.strftime("%Y-%m"),
+            "month": index,
             "predicted_price": pred_price
         })
 
