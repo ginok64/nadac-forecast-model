@@ -64,6 +64,12 @@ def forecast_ndc(ndc: str, history_df: pd.DataFrame, steps: int = 12):
     history_df = history_df.dropna(subset=["month", "NADAC Per Unit"])
     history_df = history_df.sort_values("month").reset_index(drop=True)
 
+    history_df = (
+        history_df
+        .groupby("month", as_index=False)
+        .last()
+    )
+
     history_df = fill_missing(history_df)
 
     if len(history_df) < 12:
